@@ -1,0 +1,30 @@
+#!/bin/bash -l
+
+#SBATCH --job-name=pp_D_Mo
+#SBATCH --time=12:00:00
+#SBATCH --partition=parallel
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=48
+#SBATCH --mail-type=end
+#SBATCH --mail-user=abarne65@jhu.edu
+##SBATCH --account=mfalk1
+
+
+source /data/apps/go.sh 
+source /home/abarne65/scratch16-mfalk1/annie/jpytr/myenv_ovito311/bin/activate
+
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+
+set -e
+
+echo "Starting processing_dumps.py"
+time python ./processing_dumps.py > processing_dumps.log 2>&1
+
+echo "Starting pps_p.py"
+time python ./pps_p.py > pps_p.log 2>&1
+
+#echo "Starting combine.py"
+#time python ./combine.py > combine.log 2>&1
+
+echo "All steps completed"
+
