@@ -1,0 +1,95 @@
+# Conjugate Gradient Minimization in NiAl with L12 order
+# potential: EAM for Ni-Al alloys 
+#
+###############################################################################
+#---------------------------- Simulation Setup --------------------------------#
+################################################################################
+
+#--- General Variables ---#
+variable	Nif 		equal 0.75		#fractions of structure occupied by each element
+variable        Alf	 	equal 0.25
+
+variable	Niseed 		equal 53522		#random seed values
+variable	Alseed 		equal 56734
+
+variable        NRUNNPT         equal 10000
+variable	T_quench	equal 1000
+variable	T_rt		equal 293
+
+#------- Variables for L12 Lattice ----------#
+variable      La1 equal 3.6
+variable      La2 equal 3.6
+variable      La3 equal 3.6
+
+#--- Initialization ---#
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+#--- Generate Atoms ---#
+lattice       custom 1.0 &
+              a1 ${La1} 0.0 0.0 &
+              a2 0.0 ${La2} 0.0 &
+              a3 0.0 0.0 ${La3} &
+              orient x 1 0 0 &
+              orient y 0 1 0 &
+              orient z 0 0 1 &
+              basis 0.0 0.0 0.0 &
+              basis 0.5 0.5 0.0 &
+              basis 0.5 0.0 0.5 &
+              basis 0.0 0.5 0.5
+
+region		box block 0 10 0 10 0 10 units lattice 
+create_box 	2 box
+create_atoms  1 box &
+              basis 1 2
+  
+mass 1 58.69   #Ni
+mass 2 26.98 #Al
+
+#--- Interactions ---#
+pair_style eam/alloy
+pair_coeff * * Ni-Al-2009.eam.alloy Ni Al
+
+reset_timestep 0
+timestep .0025 #picoseconds
+
+#--- Neighbor Cuttoff ---#
+neighbor 2.0 bin
+neigh_modify delay 10 every 1 check yes
+
+#--- Computes ---#
+compute potEnergy all pe/atom
+compute eatoms all reduce sum c_potEnergy
+compute kinEnergy all ke/atom
+compute csym all centro/atom fcc                #centrosymmetry parameter
+
+compute sigma all stress/atom NULL virial       #per atom stress tensor (symmetric, 6 components below)
+compute aveSigma1 all reduce sum c_sigma[1]     #xx
+compute aveSigma2 all reduce sum c_sigma[2]     #yy
+compute aveSigma3 all reduce sum c_sigma[3]     #zz
+compute aveSigma4 all reduce sum c_sigma[4]     #xy
+compute aveSigma5 all reduce sum c_sigma[5]     #xz
+compute aveSigma6 all reduce sum c_sigma[6]     #yz
+
+################################################################################
+#--------------------------- Energy Minimization ------------------------------#
+################################################################################
+#--- Quick Quench & Minimization ---#
+min_style cg
+minimize 1e-14 1e-14 50000 200000
+
+dump d1 all custom 2 initial_dumps/${composition}_${sia_type}_${loop_counter}.dump id type x y z c_potEnergy 
+dump_modify d1 sort id
+
+run 1
+undump d1
+
+run 0
+#------------------------------------------------------------------------------#
+
+jump SELF END
+label END
+print       "All Done :)"
+
