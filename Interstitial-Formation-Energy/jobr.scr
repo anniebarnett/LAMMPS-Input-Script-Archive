@@ -1,6 +1,6 @@
 #!/bin/bash -l
 
-#SBATCH --job-name=SIA_Mo
+#SBATCH --job-name=SIA_Mo_Mo5Ta
 #SBATCH --time=72:00:00
 #SBATCH --partition=parallel
 #SBATCH --nodes=1
