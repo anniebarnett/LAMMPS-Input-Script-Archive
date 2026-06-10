@@ -1,0 +1,109 @@
+# Interstitial formation energy calculation in Mo
+# potential: tabGAP overlay with EAM for MoNbTaWV
+###############################################################################
+#---------------------------- Simulation Setup --------------------------------#
+################################################################################
+
+#--- Initialization ---#
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+#--- Variables1 ---#
+variable        time_tot        equal "(dt*step)/1000" #nanoseconds
+variable        composition     string Mo
+variable        sia_type     	  string Mo_SIA
+variable        Temp_aging      equal 573.15   #300C
+variable        latparam        equal 3.15
+variable        seed 		equal 	floor(random(1,1000000,12345))
+
+#--- Create Lattice ---#
+lattice        bcc ${latparam} orient x 1 0 0 orient y 0 1 0 orient z 0 0 1
+region         whole block -15 15 -15 15 -15 15 units lattice
+create_box     5 whole
+create_atoms   1 box 
+
+set type 1 type/ratio 1 1.0 73932 #Set 100% of the atoms to type 1. 
+
+mass 1 95.95      #Mo
+mass 2 92.90637   #Nb
+mass 3 180.94788  #Ta
+mass 4 50.9415    #V
+mass 5 183.84     #W
+
+#--- Interactions ---#
+pair_style hybrid/overlay tabgap eam/fs
+pair_coeff * * tabgap /home/abarne65/scratch16-mfalk1/annie/defects/Mo-Nb-Ta-V-W.tabgap Mo Nb Ta V W no yes
+pair_coeff * * eam/fs /home/abarne65/scratch16-mfalk1/annie/defects/Mo-Nb-Ta-V-W.eam.fs Mo Nb Ta V W
+
+reset_timestep 0
+timestep .002 #picoseconds
+
+#--- Neighbor Cuttoff ---#
+neighbor 2.0 bin
+neigh_modify delay 10 every 1 check yes
+
+#--- Computes ---#
+compute potEnergy all pe/atom
+compute eatoms all reduce sum c_potEnergy
+compute kinEnergy all ke/atom
+compute csym all centro/atom bcc                #centrosymmetry parameter - change for given crystal structure
+
+compute sigma all stress/atom NULL virial       #per atom stress tensor (symmetric, 6 components below)
+compute aveSigma1 all reduce sum c_sigma[1]     #xx
+compute aveSigma2 all reduce sum c_sigma[2]     #yy
+compute aveSigma3 all reduce sum c_sigma[3]     #zz
+compute aveSigma4 all reduce sum c_sigma[4]     #xy
+compute aveSigma5 all reduce sum c_sigma[5]     #xz
+compute aveSigma6 all reduce sum c_sigma[6]     #yz
+
+################################################################################
+#------------------------------- Insert SIA -----------------------------------#
+################################################################################
+#--- Quick Quench & Minimization ---#
+min_style cg
+minimize 1e-14 1e-14 50000 200000
+
+dump d1 all custom 2 initial_dumps/${composition}_${sia_type}_${loop_counter}.dump id type x y z c_potEnergy #loop_counter is set in bash script
+dump_modify d1 sort id
+
+run 1
+undump d1
+
+run 0
+#initial statistics
+variable N equal count(all)
+variable No equal ${N} 
+variable E equal "c_eatoms"
+variable Eo equal ${E}
+
+#--- Insert Mo interstitial ---#
+variable rand_seed equal floor(random(10000,100000,${db_seed}))
+fix depo all deposit 1 1 1 ${rand_seed} region whole id max
+
+run 1
+unfix depo
+
+dump d2 all custom 2 final_dumps/${composition}_${sia_type}_${loop_counter}.dump id type x y z 
+dump_modify d2 sort id
+
+min_style cg
+minimize 1e-14 1e-14 50000 200000
+
+undump d2
+
+#final statistics
+variable N equal count(all)
+variable Ni equal ${N}
+variable E equal "c_eatoms"
+variable Ei equal ${E}
+
+print "${loop_counter} ${No} ${Ni} ${Eo} ${Ei} ${rand_seed}" append ${composition}_${sia_type}output.dat #data from each loop is appended to the same data file
+
+#------------------------------------------------------------------------------#
+
+jump SELF END
+label END
+print       "All Done"
+
