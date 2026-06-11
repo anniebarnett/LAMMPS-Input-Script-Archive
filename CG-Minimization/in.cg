@@ -5,18 +5,8 @@
 #---------------------------- Simulation Setup --------------------------------#
 ################################################################################
 
-#--- General Variables ---#
-variable	Nif 		equal 0.75		#fractions of structure occupied by each element
-variable        Alf	 	equal 0.25
-
-variable	Niseed 		equal 53522		#random seed values
-variable	Alseed 		equal 56734
-
-variable        NRUNNPT         equal 10000
-variable	T_quench	equal 1000
-variable	T_rt		equal 293
-
-#------- Variables for L12 Lattice ----------#
+#--- Variables ---#
+variable      composition equal Ni3Al
 variable      La1 equal 3.6
 variable      La2 equal 3.6
 variable      La3 equal 3.6
@@ -76,20 +66,19 @@ compute aveSigma6 all reduce sum c_sigma[6]     #yz
 ################################################################################
 #--------------------------- Energy Minimization ------------------------------#
 ################################################################################
-#--- Quick Quench & Minimization ---#
+
 min_style cg
 minimize 1e-14 1e-14 50000 200000
 
-dump d1 all custom 2 initial_dumps/${composition}_${sia_type}_${loop_counter}.dump id type x y z c_potEnergy 
+dump d1 all custom 10000 ${composition}-CG.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6]
+dump_modify d1 element Ni Al
 dump_modify d1 sort id
 
 run 1
 undump d1
-
-run 0
 #------------------------------------------------------------------------------#
 
 jump SELF END
 label END
-print       "All Done :)"
+print       "All Done"
 
