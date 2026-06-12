@@ -1,0 +1,374 @@
+LAMMPS (22 Jul 2025 - Update 4)
+# Continuous Frenkel Pair Creation in MoNbTaW
+#
+################################################################################
+#---------------------------- Simulation Setup --------------------------------#
+################################################################################
+#--- Initialization ---#
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+#--- Variables 1 ---#
+variable        latparam equal 3.52
+variable        comp     string Ni
+
+#--- Create Lattice ---#
+lattice        fcc ${latparam} orient x 1 0 0 orient y 0 1 0 orient z 0 0 1
+lattice        fcc 3.52 orient x 1 0 0 orient y 0 1 0 orient z 0 0 1
+Lattice spacing in x,y,z = 3.52 3.52 3.52
+region         whole block -10 10 -10 10 -10 10 units lattice
+create_box     2 whole
+Created orthogonal box = (-35.2 -35.2 -35.2) to (35.2 35.2 35.2)
+  1 by 1 by 1 MPI processor grid
+create_atoms   1 box
+Created 32000 atoms
+  using lattice units in orthogonal box = (-35.2 -35.2 -35.2) to (35.2 35.2 35.2)
+  create_atoms CPU = 0.001 seconds
+
+#set type 1 type/ratio 2 0.050 73932
+
+mass 1 58.69   #Ni
+mass 2 26.98 #Al
+
+timestep .0005
+
+#--- Interactions ---#
+pair_style eam/alloy
+pair_coeff * * ./Ni-Al-2009.eam.alloy Ni Al
+
+#--- Neighbor Cuttoff ---#
+neighbor 2.0 bin
+neigh_modify delay 10 every 1 check yes
+
+#--- Variables 2 ---#
+variable        Temp    equal 573 #300C
+variable        N_init  equal count(all)
+variable        time_tot equal "(dt*step)/1000"
+
+#--- Computes ---#1 2
+compute csym all centro/atom fcc
+
+compute potEnergy all pe/atom
+compute eatoms all reduce sum c_potEnergy
+compute kinEnergy all ke/atom
+
+compute sigma all stress/atom NULL virial       #per atom stress tensor, 6 components below
+compute aveSigma1 all reduce sum c_sigma[1]     #xx
+compute aveSigma2 all reduce sum c_sigma[2]     #yy
+compute aveSigma3 all reduce sum c_sigma[3]     #zz
+compute aveSigma4 all reduce sum c_sigma[4]     #xy
+compute aveSigma5 all reduce sum c_sigma[5]     #xz
+compute aveSigma6 all reduce sum c_sigma[6]     #yz
+
+compute disp all displace/atom
+
+group type1_atoms type 1
+32000 atoms in group type1_atoms
+group type2_atoms type 2
+0 atoms in group type2_atoms
+
+compute msd_t1 type1_atoms msd com no average no
+compute msd_t2 type2_atoms msd com no average no
+
+################################################################################
+#---------------------------- Create Frenkel Pairs ----------------------------#
+################################################################################
+# 0 K relaxation
+reset_timestep 0
+min_style cg
+minimize 1e-12 1e-8 10000 100000
+Switching to 'neigh_modify every 1 delay 0 check yes' setting during minimization
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 8.28721
+  ghost atom cutoff = 8.28721
+  binsize = 4.143605, bins = 17 17 17
+  2 neighbor lists, perpetual/occasional/extra = 1 1 0
+  (1) pair eam/alloy, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+  (2) compute centro/atom, occasional
+      attributes: full, newton on
+      pair build: full/bin/atomonly
+      stencil: full/bin/3d
+      bin: standard
+Per MPI rank memory allocation (min/avg/max) = 39.69 | 39.69 | 39.69 Mbytes
+   Step          Temp          E_pair         E_mol          TotEng         Press     
+         0   0             -142400         0             -142400         0.086525413  
+         1   0             -142400         0             -142400         0.086525413  
+Loop time of 0.117176 on 1 procs for 1 steps with 32000 atoms
+
+99.5% CPU use with 1 MPI tasks x no OpenMP threads
+
+Minimization stats:
+  Stopping criterion = energy tolerance
+  Energy initial, next-to-last, final = 
+     -142399.999540229  -142399.999540229  -142399.999540229
+  Force two-norm initial, final = 4.9375142e-12 4.9303549e-12
+  Force max component initial, final = 4.2935273e-14 4.2935273e-14
+  Final line search alpha, max atom move = 1 4.2935273e-14
+  Iterations, force evaluations = 1 2
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.116      | 0.116      | 0.116      |   0.0 | 99.00
+Neigh   | 0          | 0          | 0          |   0.0 |  0.00
+Comm    | 0.00024396 | 0.00024396 | 0.00024396 |   0.0 |  0.21
+Output  | 0          | 0          | 0          |   0.0 |  0.00
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 0.000933   |            |       |  0.80
+
+Nlocal:          32000 ave       32000 max       32000 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          26825 ave       26825 max       26825 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:      3.584e+06 ave   3.584e+06 max   3.584e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:            0 ave           0 max           0 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 3584000
+Ave neighs/atom = 112
+Neighbor list builds = 0
+Dangerous builds = 0
+
+variable counter_interstitials equal 0
+velocity all create ${Temp} 7392611 mom yes rot yes dist gaussian
+velocity all create 573 7392611 mom yes rot yes dist gaussian
+
+write_dump all custom ${comp}_*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+write_dump all custom Ni_*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+
+#--- Loop to generate Frenkel pairs ---#
+variable        n loop 2
+label           loop
+
+variable fppl equal 2	## FPPL = FRENKEL PAIRS PER LOOP -> CHANGE THIS VALUE TO CHANGE THE 'DOSE RATE' OF YOUR SIMULATION ###
+variable deposteps equal 10
+variable rate  equal ${deposteps}/${fppl}
+variable rate  equal 10/${fppl}
+variable rate  equal 10/2
+variable dumprate equal ${deposteps}/2
+variable dumprate equal 10/2
+variable quenchsteps equal 100
+
+#--- NPT relaxation ---#
+fix npt all npt temp ${Temp} ${Temp} $(100*dt) aniso 0.0 0.0 $(1000*dt)
+fix npt all npt temp 573 ${Temp} $(100*dt) aniso 0.0 0.0 $(1000*dt)
+fix npt all npt temp 573 573 $(100*dt) aniso 0.0 0.0 $(1000*dt)
+fix npt all npt temp 573 573 0.050000000000000002776 aniso 0.0 0.0 $(1000*dt)
+fix npt all npt temp 573 573 0.050000000000000002776 aniso 0.0 0.0 0.5
+
+dump d2 all custom ${dumprate} ${comp}_npt${n}_${Temp}C.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+dump d2 all custom 5 ${comp}_npt${n}_${Temp}C.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+dump d2 all custom 5 Ni_npt${n}_${Temp}C.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+dump d2 all custom 5 Ni_npt1_${Temp}C.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+dump d2 all custom 5 Ni_npt1_573C.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+dump_modify d2 element Ni Al
+dump_modify d2 sort id
+
+#--- Box Settings ---#
+region lattice_region_${n} block EDGE EDGE EDGE EDGE EDGE EDGE units box
+region lattice_region_1 block EDGE EDGE EDGE EDGE EDGE EDGE units box
+
+#-- Assign Interstitials ---#
+#variable atype_unfiltered equal ceil(random(1,2,19299272))  # Randomly select atom type between 1 and 2
+variable atype_unfiltered equal 1
+print "selected atom type = ${atype_unfiltered}"
+selected atom type = 1
+variable atype equal ${atype_unfiltered}
+variable atype equal 1
+
+#--- Create Vacancies ---#
+variable num_delete_atoms equal ${fppl}
+variable num_delete_atoms equal 2
+group vacancy_atoms type ${atype}
+group vacancy_atoms type 1
+32000 atoms in group vacancy_atoms
+delete_atoms random count ${num_delete_atoms} yes vacancy_atoms NULL 263721
+delete_atoms random count 2 yes vacancy_atoms NULL 263721
+Deleted 2 atoms, new total = 31998
+
+#--- Create Interstitials ---#
+fix depo all deposit ${fppl} ${atype} ${rate} 254921 region lattice_region_${n} near 0.5 attempt 100 id max
+fix depo all deposit 2 ${atype} ${rate} 254921 region lattice_region_${n} near 0.5 attempt 100 id max
+fix depo all deposit 2 1 ${rate} 254921 region lattice_region_${n} near 0.5 attempt 100 id max
+fix depo all deposit 2 1 5 254921 region lattice_region_${n} near 0.5 attempt 100 id max
+fix depo all deposit 2 1 5 254921 region lattice_region_1 near 0.5 attempt 100 id max
+
+thermo 50
+thermo_style custom step temp atoms c_eatoms v_time_tot ke etotal press vol lx ly lz c_msd_t1[1] c_msd_t1[2] c_msd_t1[3] c_msd_t1[4] c_msd_t2[1] c_msd_t2[2] c_msd_t2[3] c_msd_t2[4]
+thermo_modify lost ignore flush yes
+
+run   ${deposteps}
+run   10
+Per MPI rank memory allocation (min/avg/max) = 69.54 | 69.54 | 69.54 Mbytes
+   Step          Temp         Atoms       c_eatoms      v_time_tot       KinEng         TotEng         Press          Volume           Lx             Ly             Lz        c_msd_t1[1]    c_msd_t1[2]    c_msd_t1[3]    c_msd_t1[4]    c_msd_t2[1]    c_msd_t2[2]    c_msd_t2[3]    c_msd_t2[4]  
+         1   573.02153          31998  -142387.86      5e-07          2369.9809     -140017.88      7242.5617      348913.66      70.4           70.4           70.4           3.8215409e-33  2.662915e-33   1.1698491e-32  1.8182947e-32  0              0              0              0            
+WARNING: One or more particle depositions were unsuccessful (src/fix_deposit.cpp:598)
+        11   548.00566          31998  -142284.45      5.5e-06        2266.5168     -140017.93      7413.3182      348966.13      70.403528      70.403508      70.403548      0.0002009084   0.00019981857  0.00020191508  0.00060264206  0              0              0              0            
+Loop time of 1.35423 on 1 procs for 10 steps with 31998 atoms
+
+Performance: 0.319 ns/day, 75.235 hours/ns, 7.384 timesteps/s, 236.281 katom-step/s
+99.7% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.4951     | 0.4951     | 0.4951     |   0.0 | 36.56
+Neigh   | 0.13487    | 0.13487    | 0.13487    |   0.0 |  9.96
+Comm    | 0.0013825  | 0.0013825  | 0.0013825  |   0.0 |  0.10
+Output  | 0.56942    | 0.56942    | 0.56942    |   0.0 | 42.05
+Modify  | 0.15312    | 0.15312    | 0.15312    |   0.0 | 11.31
+Other   |            | 0.0003405  |            |       |  0.03
+
+Nlocal:          31998 ave       31998 max       31998 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          26823 ave       26823 max       26823 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    3.58192e+06 ave 3.58192e+06 max 3.58192e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:  7.13679e+06 ave 7.13679e+06 max 7.13679e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 7136792
+Ave neighs/atom = 223.03869
+Neighbor list builds = 2
+Dangerous builds = 0
+
+write_restart ${comp}_${Temp}C.${n}.restart
+write_restart Ni_${Temp}C.${n}.restart
+write_restart Ni_573C.${n}.restart
+write_restart Ni_573C.1.restart
+System init for write_restart ...
+
+unfix depo
+undump d2
+unfix npt
+
+next    n
+jump    SELF loop
+
+variable fppl equal 2	## FPPL = FRENKEL PAIRS PER LOOP -> CHANGE THIS VALUE TO CHANGE THE 'DOSE RATE' OF YOUR SIMULATION ###
+variable deposteps equal 10
+variable rate  equal ${deposteps}/${fppl}
+variable rate  equal 10/${fppl}
+variable rate  equal 10/2
+variable dumprate equal ${deposteps}/2
+variable dumprate equal 10/2
+variable quenchsteps equal 100
+
+#--- NPT relaxation ---#
+fix npt all npt temp ${Temp} ${Temp} $(100*dt) aniso 0.0 0.0 $(1000*dt)
+fix npt all npt temp 573 ${Temp} $(100*dt) aniso 0.0 0.0 $(1000*dt)
+fix npt all npt temp 573 573 $(100*dt) aniso 0.0 0.0 $(1000*dt)
+fix npt all npt temp 573 573 0.050000000000000002776 aniso 0.0 0.0 $(1000*dt)
+fix npt all npt temp 573 573 0.050000000000000002776 aniso 0.0 0.0 0.5
+
+dump d2 all custom ${dumprate} ${comp}_npt${n}_${Temp}C.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+dump d2 all custom 5 ${comp}_npt${n}_${Temp}C.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+dump d2 all custom 5 Ni_npt${n}_${Temp}C.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+dump d2 all custom 5 Ni_npt2_${Temp}C.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+dump d2 all custom 5 Ni_npt2_573C.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+dump_modify d2 element Ni Al
+dump_modify d2 sort id
+
+#--- Box Settings ---#
+region lattice_region_${n} block EDGE EDGE EDGE EDGE EDGE EDGE units box
+region lattice_region_2 block EDGE EDGE EDGE EDGE EDGE EDGE units box
+
+#-- Assign Interstitials ---#
+#variable atype_unfiltered equal ceil(random(1,2,19299272))  # Randomly select atom type between 1 and 2
+variable atype_unfiltered equal 1
+print "selected atom type = ${atype_unfiltered}"
+selected atom type = 1
+variable atype equal ${atype_unfiltered}
+variable atype equal 1
+
+#--- Create Vacancies ---#
+variable num_delete_atoms equal ${fppl}
+variable num_delete_atoms equal 2
+group vacancy_atoms type ${atype}
+group vacancy_atoms type 1
+31998 atoms in group vacancy_atoms
+delete_atoms random count ${num_delete_atoms} yes vacancy_atoms NULL 263721
+delete_atoms random count 2 yes vacancy_atoms NULL 263721
+Deleted 2 atoms, new total = 31996
+
+#--- Create Interstitials ---#
+fix depo all deposit ${fppl} ${atype} ${rate} 254921 region lattice_region_${n} near 0.5 attempt 100 id max
+fix depo all deposit 2 ${atype} ${rate} 254921 region lattice_region_${n} near 0.5 attempt 100 id max
+fix depo all deposit 2 1 ${rate} 254921 region lattice_region_${n} near 0.5 attempt 100 id max
+fix depo all deposit 2 1 5 254921 region lattice_region_${n} near 0.5 attempt 100 id max
+fix depo all deposit 2 1 5 254921 region lattice_region_2 near 0.5 attempt 100 id max
+
+thermo 50
+thermo_style custom step temp atoms c_eatoms v_time_tot ke etotal press vol lx ly lz c_msd_t1[1] c_msd_t1[2] c_msd_t1[3] c_msd_t1[4] c_msd_t2[1] c_msd_t2[2] c_msd_t2[3] c_msd_t2[4]
+WARNING: New thermo_style command, previous thermo_modify settings will be lost (src/output.cpp:912)
+thermo_modify lost ignore flush yes
+
+run   ${deposteps}
+run   10
+Per MPI rank memory allocation (min/avg/max) = 69.56 | 69.56 | 69.56 Mbytes
+   Step          Temp         Atoms       c_eatoms      v_time_tot       KinEng         TotEng         Press          Volume           Lx             Ly             Lz        c_msd_t1[1]    c_msd_t1[2]    c_msd_t1[3]    c_msd_t1[4]    c_msd_t2[1]    c_msd_t2[2]    c_msd_t2[3]    c_msd_t2[4]  
+        11   548.01808          31996  -142272.33      5.5e-06        2266.4265     -140005.91      7399.6164      348966.13      70.403528      70.403508      70.403548      0.0002009152   0.00019982573  0.00020191646  0.0006026574   0              0              0              0            
+WARNING: One or more particle depositions were unsuccessful (src/fix_deposit.cpp:598)
+        21   479.17343          31996  -141986.23      1.05e-05       1981.7072     -140004.52      8334.6505      349021.71      70.407265      70.407227      70.407305      0.00076930394  0.00076509734  0.00077320213  0.0023076034   0              0              0              0            
+Loop time of 1.348 on 1 procs for 10 steps with 31996 atoms
+
+Performance: 0.320 ns/day, 74.889 hours/ns, 7.418 timesteps/s, 237.359 katom-step/s
+99.8% CPU use with 1 MPI tasks x no OpenMP threads
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.49817    | 0.49817    | 0.49817    |   0.0 | 36.96
+Neigh   | 0.13247    | 0.13247    | 0.13247    |   0.0 |  9.83
+Comm    | 0.0013169  | 0.0013169  | 0.0013169  |   0.0 |  0.10
+Output  | 0.56499    | 0.56499    | 0.56499    |   0.0 | 41.91
+Modify  | 0.15072    | 0.15072    | 0.15072    |   0.0 | 11.18
+Other   |            | 0.0003283  |            |       |  0.02
+
+Nlocal:          31996 ave       31996 max       31996 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Nghost:          26822 ave       26822 max       26822 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+Neighs:    3.52151e+06 ave 3.52151e+06 max 3.52151e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+FullNghs:  7.01161e+06 ave 7.01161e+06 max 7.01161e+06 min
+Histogram: 1 0 0 0 0 0 0 0 0 0
+
+Total # of neighbors = 7011612
+Ave neighs/atom = 219.14027
+Neighbor list builds = 2
+Dangerous builds = 0
+
+write_restart ${comp}_${Temp}C.${n}.restart
+write_restart Ni_${Temp}C.${n}.restart
+write_restart Ni_573C.${n}.restart
+write_restart Ni_573C.2.restart
+System init for write_restart ...
+
+unfix depo
+undump d2
+unfix npt
+
+next    n
+jump    SELF loop
+
+write_dump all custom ${comp}_*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+write_dump all custom Ni_*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6] c_disp[1] c_disp[2] c_disp[3] c_disp[4]
+
+#------------------------------------------------------------------------------#
+
+jump SELF END
+print       "All Done"
+All Done
+
+Total wall time: 0:00:03
