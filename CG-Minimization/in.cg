@@ -6,7 +6,7 @@
 ################################################################################
 
 #--- Variables ---#
-variable      composition equal Ni3Al
+variable      composition string Ni3Al
 variable      La1 equal 3.6
 variable      La2 equal 3.6
 variable      La3 equal 3.6
@@ -40,9 +40,8 @@ mass 2 26.98 #Al
 
 #--- Interactions ---#
 pair_style eam/alloy
-pair_coeff * * Ni-Al-2009.eam.alloy Ni Al
+pair_coeff * * ./Ni-Al-2009.eam.alloy Ni Al
 
-reset_timestep 0
 timestep .0025 #picoseconds
 
 #--- Neighbor Cuttoff ---#
@@ -67,18 +66,21 @@ compute aveSigma6 all reduce sum c_sigma[6]     #yz
 #--------------------------- Energy Minimization ------------------------------#
 ################################################################################
 
-min_style cg
-minimize 1e-14 1e-14 50000 200000
+reset_timestep 0 
 
-dump d1 all custom 10000 ${composition}-CG.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6]
+fix f1 all box/relax iso 0.0 vmax 0.001
+
+thermo 10 
+thermo_style custom step pe lx ly lz press pxx pyy pzz c_eatoms 
+
+dump d1 all custom 5 ${composition}-CG.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6]
 dump_modify d1 element Ni Al
 dump_modify d1 sort id
 
-run 1
-undump d1
+min_style cg 
+minimize 1e-25 1e-25 5000 10000 
 #------------------------------------------------------------------------------#
 
 jump SELF END
 label END
 print       "All Done"
-

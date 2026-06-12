@@ -1,0 +1,149 @@
+LAMMPS (2 Aug 2023 - Update 3)
+# Conjugate Gradient Minimization in NiAl with L12 order
+# potential: EAM for Ni-Al alloys
+#
+###############################################################################
+#---------------------------- Simulation Setup --------------------------------#
+################################################################################
+
+#--- Variables ---#
+variable      composition string Ni3Al
+variable      La1 equal 3.6
+variable      La2 equal 3.6
+variable      La3 equal 3.6
+
+#--- Initialization ---#
+units           metal
+dimension       3
+boundary        p p p
+atom_style      atomic
+
+#--- Generate Atoms ---#
+lattice       custom 1.0               a1 ${La1} 0.0 0.0               a2 0.0 ${La2} 0.0               a3 0.0 0.0 ${La3}               orient x 1 0 0               orient y 0 1 0               orient z 0 0 1               basis 0.0 0.0 0.0               basis 0.5 0.5 0.0               basis 0.5 0.0 0.5               basis 0.0 0.5 0.5
+lattice       custom 1.0               a1 3.6 0.0 0.0               a2 0.0 ${La2} 0.0               a3 0.0 0.0 ${La3}               orient x 1 0 0               orient y 0 1 0               orient z 0 0 1               basis 0.0 0.0 0.0               basis 0.5 0.5 0.0               basis 0.5 0.0 0.5               basis 0.0 0.5 0.5
+lattice       custom 1.0               a1 3.6 0.0 0.0               a2 0.0 3.6 0.0               a3 0.0 0.0 ${La3}               orient x 1 0 0               orient y 0 1 0               orient z 0 0 1               basis 0.0 0.0 0.0               basis 0.5 0.5 0.0               basis 0.5 0.0 0.5               basis 0.0 0.5 0.5
+lattice       custom 1.0               a1 3.6 0.0 0.0               a2 0.0 3.6 0.0               a3 0.0 0.0 3.6               orient x 1 0 0               orient y 0 1 0               orient z 0 0 1               basis 0.0 0.0 0.0               basis 0.5 0.5 0.0               basis 0.5 0.0 0.5               basis 0.0 0.5 0.5
+Lattice spacing in x,y,z = 3.6 3.6 3.6
+
+region		box block 0 10 0 10 0 10 units lattice
+create_box 	2 box
+Created orthogonal box = (0 0 0) to (36 36 36)
+  3 by 4 by 4 MPI processor grid
+create_atoms  1 box               basis 1 2
+Created 4000 atoms
+  using lattice units in orthogonal box = (0 0 0) to (36 36 36)
+  create_atoms CPU = 0.031 seconds
+
+mass 1 58.69   #Ni
+mass 2 26.98 #Al
+
+#--- Interactions ---#
+pair_style eam/alloy
+pair_coeff * * ./Ni-Al-2009.eam.alloy Ni Al
+
+timestep .0025 #picoseconds
+
+#--- Neighbor Cuttoff ---#
+neighbor 2.0 bin
+neigh_modify delay 10 every 1 check yes
+
+#--- Computes ---#
+compute potEnergy all pe/atom
+compute eatoms all reduce sum c_potEnergy
+compute kinEnergy all ke/atom
+compute csym all centro/atom fcc                #centrosymmetry parameter
+
+compute sigma all stress/atom NULL virial       #per atom stress tensor (symmetric, 6 components below)
+compute aveSigma1 all reduce sum c_sigma[1]     #xx
+compute aveSigma2 all reduce sum c_sigma[2]     #yy
+compute aveSigma3 all reduce sum c_sigma[3]     #zz
+compute aveSigma4 all reduce sum c_sigma[4]     #xy
+compute aveSigma5 all reduce sum c_sigma[5]     #xz
+compute aveSigma6 all reduce sum c_sigma[6]     #yz
+
+################################################################################
+#--------------------------- Energy Minimization ------------------------------#
+################################################################################
+
+reset_timestep 0
+
+fix f1 all box/relax iso 0.0 vmax 0.001
+
+thermo 10
+thermo_style custom step pe lx ly lz press pxx pyy pzz c_eatoms
+
+dump d1 all custom 5 ${composition}-CG.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6]
+dump d1 all custom 5 Ni3Al-CG.*.dump id type element mass x y z c_csym c_potEnergy c_kinEnergy c_sigma[1] c_sigma[2] c_sigma[3] c_sigma[4] c_sigma[5] c_sigma[6]
+dump_modify d1 element Ni Al
+dump_modify d1 sort id
+
+min_style cg
+minimize 1e-25 1e-25 5000 10000
+Switching to 'neigh_modify every 1 delay 0 check yes' setting during minimization
+Neighbor list info ...
+  update: every = 1 steps, delay = 0 steps, check = yes
+  max neighbors/atom: 2000, page size: 100000
+  master list distance cutoff = 8.28721
+  ghost atom cutoff = 8.28721
+  binsize = 4.143605, bins = 9 9 9
+  2 neighbor lists, perpetual/occasional/extra = 1 1 0
+  (1) pair eam/alloy, perpetual
+      attributes: half, newton on
+      pair build: half/bin/atomonly/newton
+      stencil: half/bin/3d
+      bin: standard
+  (2) compute centro/atom, occasional
+      attributes: full, newton on
+      pair build: full/bin/atomonly
+      stencil: full/bin/3d
+      bin: standard
+WARNING: Energy due to 1 extra global DOFs will be included in minimizer energies
+ (../min.cpp:228)
+Per MPI rank memory allocation (min/avg/max) = 6.024 | 6.028 | 6.029 Mbytes
+   Step         PotEng           Lx             Ly             Lz           Press           Pxx            Pyy            Pzz          c_eatoms   
+         0  -18444.086      36             36             36            -98256.348     -98256.348     -98256.348     -98256.348     -18444.086    
+        10  -18508.112      35.64          35.64          35.64         -48232.641     -48232.641     -48232.641     -48232.641     -18508.112    
+        20  -18525.912      35.331696      35.331696      35.331696     -0.00069830811 -0.00069830811 -0.00069830812 -0.00069830811 -18525.912    
+        25  -18525.912      35.331696      35.331696      35.331696      1.974982e-10   2.0184307e-10  2.035208e-10   1.8713072e-10 -18525.912    
+Loop time of 0.0292459 on 48 procs for 25 steps with 4000 atoms
+
+99.1% CPU use with 48 MPI tasks x no OpenMP threads
+
+Minimization stats:
+  Stopping criterion = energy tolerance
+  Energy initial, next-to-last, final = 
+     -18444.0864869006  -18525.9118329755  -18525.9118329755
+  Force two-norm initial, final = 8583.7887 1.8726005e-11
+  Force max component initial, final = 8583.7887 1.6619024e-11
+  Final line search alpha, max atom move = 1 1.6619024e-11
+  Iterations, force evaluations = 25 32
+
+MPI task timing breakdown:
+Section |  min time  |  avg time  |  max time  |%varavg| %total
+---------------------------------------------------------------
+Pair    | 0.0089684  | 0.01021    | 0.011655   |   0.6 | 34.91
+Neigh   | 0.00012267 | 0.00019525 | 0.00029248 |   0.0 |  0.67
+Comm    | 0.0029178  | 0.0044092  | 0.0057713  |   0.9 | 15.08
+Output  | 0.006167   | 0.0073707  | 0.010395   |   0.9 | 25.20
+Modify  | 0          | 0          | 0          |   0.0 |  0.00
+Other   |            | 0.007061   |            |       | 24.14
+
+Nlocal:        83.3333 ave         126 max          48 min
+Histogram: 1 6 8 6 4 12 0 9 0 2
+Nghost:        1517.33 ave        1610 max        1442 min
+Histogram: 1 5 10 14 2 1 0 4 6 5
+Neighs:        8333.33 ave       12600 max        4808 min
+Histogram: 1 6 8 6 7 9 0 9 0 2
+FullNghs:      18666.7 ave       28224 max       10752 min
+Histogram: 1 6 8 6 4 12 0 9 0 2
+
+Total # of neighbors = 896000
+Ave neighs/atom = 224
+Neighbor list builds = 1
+Dangerous builds = 0
+#------------------------------------------------------------------------------#
+
+jump SELF END
+print       "All Done"
+All Done
+Total wall time: 0:00:00
